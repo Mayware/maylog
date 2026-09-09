@@ -66,6 +66,11 @@ enum MaylogFlag : std::uint8_t {
 	No = 0b10,
 };
 
+constexpr MaylogFlag operator|(MaylogFlag lhs, MaylogFlag rhs) {
+    // Use the integer bitwise here, else we'd be recursive
+    return static_cast<MaylogFlag>(std::to_underlying(lhs) | std::to_underlying(rhs));
+}
+
 // Level, Tag, Throw are non-type template parameters, ie. templated values
 // It'd be like a constexpr argument, if we were allowed to do that. Note that they must be structural types
 // (https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2021/p2484r0.html#introduction)
