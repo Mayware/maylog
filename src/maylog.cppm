@@ -62,16 +62,21 @@ public:
 export namespace maylog {
 enum MaylogFlag : std::uint8_t {
 	None = 0b0,
-	Ex = 0b1,
-	No = 0b10,
+	No = 0b1,
 };
 
 constexpr MaylogFlag operator|(MaylogFlag lhs, MaylogFlag rhs) {
-    // Use the integer bitwise here, else we'd be recursive
-    return static_cast<MaylogFlag>(std::to_underlying(lhs) | std::to_underlying(rhs));
+	// Use the integer bitwise here, else we'd be recursive
+	return static_cast<MaylogFlag>(std::to_underlying(lhs) | std::to_underlying(rhs));
 }
 
-// Level, Tag, Throw are non-type template parameters, ie. templated values
+template<class... Args>
+std::string combo_errno(std::format_string<Args...> format, Args&&... args) {
+	std::string message = std::format(format, std::forward<Args>(args)...);
+	return std::format("{}: {}", std::move(message), std::strerror(errno));
+}
+
+// Level, Tag, Throw are non-type template parameters (co-alesced into Fields now, eg. like we did with the opcode), ie. templated values
 // It'd be like a constexpr argument, if we were allowed to do that. Note that they must be structural types
 // (https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2021/p2484r0.html#introduction)
 // They're wrapped in the auto... Fields so they are optional, and we discover them at consteval, and we can write them in any order
@@ -127,7 +132,7 @@ void log(Lambda&& lambda, std::source_location source = std::source_location::cu
 			lambda(), source.file_name(), source.line());
 
 		// Append errno
-		if constexpr (flag & 0b10) {
+		if constexpr (flag & No) {
 			message = std::format("{}: {}", message, std::strerror(errno));
 		}
 
@@ -139,10 +144,14 @@ void log(Lambda&& lambda, std::source_location source = std::source_location::cu
 			std::println(std::cout, "{}", message);
 			std::cout.flush();
 		}
-		// Notice that we still print anyway, since incase this is caught still important to know it happened
-		if constexpr ((flag & 0b1) == 1) {
-			throw std::runtime_error(message);
-		}
 	}
+}
+
+// Originally, was part of log, but compilers couldn't see far enough for an Ex flag that threw conditionally, so now it's extracted into a segment that always throws
+template<auto... Fields, typename Lambda>
+[[noreturn]] void fail(Lambda&& lambda, std::source_location source = std::source_location::current()) {
+    // Don't manually specify the lambda type, as it will assume the lambda is part of the pack, then try to infer the 2nd lambda type from the parameter
+	log<Fields...>(std::move(lambda), source);
+	throw std::runtime_error("Failed execution");
 }
 } // namespace maylog
